@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>전자책 PDF 생성기</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 40px 20px;
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 640px;
+        }
+
+        h1 { font-size: 28px; font-weight: 700; text-align: center; margin-bottom: 4px; }
+        .subtitle { text-align: center; color: #86868b; font-size: 14px; margin-bottom: 32px; }
+
+        .form-row { display: flex; gap: 16px; }
+        .form-row .form-group { flex: 1; }
+        .form-group { margin-bottom: 20px; }
+
+        label { display: block; font-size: 13px; font-weight: 600; color: #6e6e73; margin-bottom: 6px; }
+
+        input[type="text"], textarea {
+            width: 100%; padding: 12px 14px; border: 1.5px solid #d2d2d7;
+            border-radius: 10px; font-size: 15px; transition: border-color 0.2s;
+            outline: none; font-family: inherit; background: #fafafa;
+        }
+        input[type="text"]:focus, textarea:focus { border-color: #0071e3; background: #fff; }
+        textarea { resize: vertical; min-height: 220px; line-height: 1.6; }
+
+        .file-group { margin-bottom: 28px; }
+        .file-input-wrapper {
+            position: relative; border: 1.5px dashed #d2d2d7; border-radius: 10px;
+            padding: 16px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+        }
+        .file-input-wrapper:hover { border-color: #0071e3; background: #f0f7ff; }
+        .file-input-wrapper input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .file-label { font-size: 14px; color: #86868b; }
+
+        button[type="submit"] {
+            width: 100%; padding: 14px; background: #0071e3; color: #fff; border: none;
+            border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button[type="submit"]:hover { background: #0077ed; }
+        button[type="submit"]:active { transform: scale(0.98); }
+        button[type="submit"]:disabled { background: #a1a1a6; cursor: not-allowed; }
+
+        .btn-loading { display: inline-flex; align-items: center; gap: 8px; }
+        .btn-loading::before {
+            content: ""; width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
+            border-radius: 50%; animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error {
+            margin-top: 16px; padding: 12px 16px; background: #fff2f2;
+            border: 1px solid #ffcdd2; border-radius: 10px; color: #d32f2f;
+            font-size: 14px; text-align: center;
+        }
+        .progress-bar-wrap {
+            margin-top: 16px; background: #e5e5ea; border-radius: 8px; height: 6px; overflow: hidden; display: none;
+        }
+        .progress-bar {
+            height: 100%; width: 0%; background: #0071e3; border-radius: 8px;
+            transition: width 0.3s ease;
+        }
+
+        @media (max-width: 500px) {
+            .container { padding: 32px 20px; }
+            .form-row { flex-direction: column; gap: 0; }
+            h1 { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>전자책 PDF 생성기</h1>
+    <p class="subtitle">텍스트를 입력하면 30페이지 전자책 PDF를 만들어 드립니다</p>
+
+    <form id="ebookForm">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="title">책 제목</label>
+                <input type="text" id="title" placeholder="나의 이야기">
+            </div>
+            <div class="form-group">
+                <label for="author">저자</label>
+                <input type="text" id="author" placeholder="홍길동">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="text">내용 입력</label>
+            <textarea id="text" rows="14"
+                placeholder="여기에 인생 이야기, 사업 경험, 또는 전자책으로 만들고 싶은 내용을 입력하세요.&#10;&#10;빈 줄로 단락을 구분하면 자동으로 챕터가 나뉩니다.&#10;'제1장', '챕터 1' 같은 제목을 넣으면 해당 위치에서 장이 구분됩니다."></textarea>
+        </div>
+        <div class="form-group file-group">
+            <label for="file">또는 파일 업로드 (.txt)</label>
+            <div class="file-input-wrapper">
+                <input type="file" id="file" accept=".txt">
+                <span class="file-label" id="fileLabel">파일을 선택하세요</span>
+            </div>
+        </div>
+        <button type="submit" id="submitBtn">
+            <span class="btn-text">PDF 전자책 생성</span>
+            <span class="btn-loading" style="display:none;">생성 중...</span>
+        </button>
+        <div class="progress-bar-wrap" id="progressWrap"><div class="progress-bar" id="progressBar"></div></div>
+    </form>
+    <div id="errorMsg" class="error" style="display:none;"></div>
+</div>
+
+<script>
+const { jsPDF } = window.jspdf;
+
+// ── 한국어 폰트 동적 로드 (Google Fonts Noto Sans KR) ──────────
+let fontLoaded = false;
+let fontBase64 = null;
+
+async function loadKoreanFont() {
+    if (fontLoaded) return true;
+    try {
+        const url = 'https://cdn.jsdelivr.net/gh/nicholasgasior/gfonts-base64@master/fonts/noto-sans-kr/NotoSansKR-Regular.woff.base64.txt';
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Font fetch failed');
+        fontBase64 = await resp.text();
+        fontLoaded = true;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// ── 챕터 분리 ──────────────────────────────────────────────────
+function splitIntoChapters(text) {
+    text = text.trim();
+    const chapterRe = /\n{2,}(?=제\s*\d+\s*장|챕터\s*\d+|Chapter\s*\d+|CHAPTER\s*\d+|Part\s*\d+)/i;
+    const parts = text.split(chapterRe).filter(p => p.trim());
+
+    if (parts.length >= 3) {
+        return parts.map(p => {
+            const lines = p.trim().split('\n');
+            const title = lines[0].trim();
+            const body = lines.slice(1).join('\n').trim();
+            return { title, body };
+        });
+    }
+
+    const paragraphs = text.split(/\n{2,}/).filter(p => p.trim());
+    if (!paragraphs.length) return [{ title: '제 1 장', body: text }];
+
+    const numCh = Math.min(Math.max(3, Math.floor(paragraphs.length / 3)), 10);
+    const chunkSize = Math.ceil(paragraphs.length / numCh);
+    const chapters = [];
+    for (let i = 0; i < numCh; i++) {
+        const chunk = paragraphs.slice(i * chunkSize, (i + 1) * chunkSize);
+        if (!chunk.length) continue;
+        chapters.push({ title: `제 ${i + 1} 장`, body: chunk.join('\n\n') });
+    }
+    return chapters;
+}
+
+// ── PDF 생성 ───────────────────────────────────────────────────
+function setProgress(pct) {
+    document.getElementById('progressBar').style.width = pct + '%';
+}
+
+function generateEbook(title, author, text) {
+    const TARGET = 30;
+    const doc = new jsPDF({ format: 'a5', unit: 'mm' });
+    const pw = doc.internal.pageSize.getWidth();   // ~148
+    const ph = doc.internal.pageSize.getHeight();  // ~210
+    const ml = 15, mr = 15, mt = 20, mb = 20;
+    const usableW = pw - ml - mr;
+    const usableH = ph - mt - mb;
+
+    // 폰트 등록
+    if (fontBase64) {
+        doc.addFileToVFS('NotoSansKR-Regular.woff', fontBase64);
+        doc.addFont('NotoSansKR-Regular.woff', 'NotoSansKR', 'normal');
+    }
+
+    function setFont(style, size) {
+        if (fontBase64) {
+            doc.setFont('NotoSansKR', 'normal');
+        } else {
+            doc.setFont('helvetica', style === 'bold' ? 'bold' : 'normal');
+        }
+        doc.setFontSize(size);
+    }
+
+    function addHeader() {
+        if (doc.internal.getNumberOfPages() <= 2) return;
+        setFont('normal', 7);
+        doc.setTextColor(140, 140, 140);
+        doc.text(title, pw / 2, 10, { align: 'center' });
+    }
+
+    function addFooter() {
+        if (doc.internal.getNumberOfPages() <= 2) return;
+        setFont('normal', 7);
+        doc.setTextColor(140, 140, 140);
+        doc.text(String(doc.internal.getNumberOfPages()), pw / 2, ph - 8, { align: 'center' });
+    }
+
+    function newPage() {
+        doc.addPage();
+        addHeader();
+    }
+
+    const chapters = splitIntoChapters(text);
+    setProgress(10);
+
+    // ── 표지 (Page 1) ──────────────────────────────────────────
+    doc.setFillColor(255, 255, 255);
+    setFont('bold', 24);
+    doc.setTextColor(30, 30, 30);
+    doc.text(title, pw / 2, 75, { align: 'center', maxWidth: usableW });
+    setFont('normal', 13);
+    doc.setTextColor(100, 100, 100);
+    doc.text(author, pw / 2, 100, { align: 'center' });
+    doc.setDrawColor(200, 200, 200);
+    doc.line(pw / 2 - 25, 115, pw / 2 + 25, 115);
+    setProgress(15);
+
+    // ── 저작권 (Page 2) ────────────────────────────────────────
+    newPage();
+    setFont('normal', 9);
+    doc.setTextColor(120, 120, 120);
+    const cpText = `${title}\n\n저자: ${author}\n\n이 책의 저작권은 저자에게 있습니다.`;
+    doc.text(cpText, pw / 2, 80, { align: 'center', maxWidth: usableW });
+
+    // ── 목차 (Page 3) ──────────────────────────────────────────
+    newPage();
+    setFont('bold', 16);
+    doc.setTextColor(30, 30, 30);
+    doc.text('목  차', pw / 2, 30, { align: 'center' });
+    setFont('normal', 10);
+    let tocY = 50;
+    chapters.forEach(ch => {
+        const label = ch.title.length > 40 ? ch.title.substring(0, 37) + '...' : ch.title;
+        doc.text('  ' + label, ml, tocY);
+        tocY += 8;
+    });
+    setProgress(20);
+
+    // ── 본문 페이지 계산: 목표 - 4(표지+저작권+목차+마무리) ────
+    const contentTargetPages = TARGET - 4;
+    const totalTextLength = chapters.reduce((s, c) => s + c.body.length, 0);
+
+    // 폰트 크기 동적 계산
+    function calcFontSize() {
+        for (const fs of [8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 13, 14]) {
+            const lineH = fs * 0.4;
+            const linesPerPage = Math.floor(usableH / lineH);
+            const charsPerLine = Math.floor(usableW / (fs * 0.35));
+            const totalLines = Math.ceil(totalTextLength / Math.max(charsPerLine, 1)) * 1.3;
+            const chapterOverhead = chapters.length * 8;
+            const estPages = (totalLines + chapterOverhead) / Math.max(linesPerPage, 1);
+            if (estPages >= contentTargetPages * 0.8) return { fontSize: fs, lineH };
+        }
+        return { fontSize: 14, lineH: 5.6 };
+    }
+
+    let { fontSize, lineH } = calcFontSize();
+
+    // ── 본문 작성 ──────────────────────────────────────────────
+    chapters.forEach((ch, ci) => {
+        newPage();
+        let y = mt + 8;
+
+        // 장 제목
+        setFont('bold', 15);
+        doc.setTextColor(30, 30, 30);
+        doc.text(ch.title, ml, y);
+        y += 12;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(ml, y, pw - mr, y);
+        y += 8;
+
+        // 본문
+        setFont('normal', fontSize);
+        doc.setTextColor(30, 30, 30);
+        const paras = ch.body.split('\n');
+
+        paras.forEach(para => {
+            para = para.trim();
+            if (!para) { y += lineH * 0.5; return; }
+
+            const lines = doc.splitTextToSize(para, usableW);
+            lines.forEach(line => {
+                if (y + lineH > ph - mb) {
+                    addFooter();
+                    newPage();
+                    y = mt + 5;
+                    setFont('normal', fontSize);
+                    doc.setTextColor(30, 30, 30);
+                }
+                doc.text(line, ml, y);
+                y += lineH;
+            });
+            y += lineH * 0.3;
+        });
+
+        addFooter();
+        setProgress(20 + Math.floor((ci + 1) / chapters.length * 60));
+    });
+
+    // ── 빈 페이지로 30페이지 채우기 ────────────────────────────
+    while (doc.internal.getNumberOfPages() < TARGET - 1) {
+        newPage();
+        addFooter();
+    }
+
+    // ── 마무리 페이지 ──────────────────────────────────────────
+    newPage();
+    setFont('bold', 14);
+    doc.setTextColor(30, 30, 30);
+    doc.text(title, pw / 2, 75, { align: 'center' });
+    setFont('normal', 10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`저자: ${author}`, pw / 2, 90, { align: 'center' });
+    doc.setDrawColor(200, 200, 200);
+    doc.line(pw / 2 - 25, 100, pw / 2 + 25, 100);
+    setFont('normal', 8);
+    doc.text('이 전자책은 자동 생성되었습니다.', pw / 2, 110, { align: 'center' });
+
+    setProgress(95);
+
+    // ── 모든 페이지에 헤더/푸터 재적용 ─────────────────────────
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 3; i <= totalPages; i++) {
+        doc.setPage(i);
+        setFont('normal', 7);
+        doc.setTextColor(140, 140, 140);
+        doc.text(String(i), pw / 2, ph - 8, { align: 'center' });
+    }
+
+    setProgress(100);
+    doc.save(`${title}.pdf`);
+}
+
+// ── UI 이벤트 ──────────────────────────────────────────────────
+const form = document.getElementById('ebookForm');
+const fileInput = document.getElementById('file');
+const fileLabel = document.getElementById('fileLabel');
+
+fileInput.addEventListener('change', () => {
+    fileLabel.textContent = fileInput.files[0] ? fileInput.files[0].name : '파일을 선택하세요';
+});
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorMsg = document.getElementById('errorMsg');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = submitBtn.querySelector('.btn-text');
+    const btnLoading = submitBtn.querySelector('.btn-loading');
+    const progressWrap = document.getElementById('progressWrap');
+
+    errorMsg.style.display = 'none';
+    btnText.style.display = 'none';
+    btnLoading.style.display = 'inline';
+    submitBtn.disabled = true;
+    progressWrap.style.display = 'block';
+    setProgress(0);
+
+    const title = document.getElementById('title').value.trim() || '나의 전자책';
+    const author = document.getElementById('author').value.trim() || '저자 미상';
+    let text = document.getElementById('text').value.trim();
+
+    // 파일 읽기
+    if (fileInput.files[0]) {
+        try {
+            const fileText = await fileInput.files[0].text();
+            text = text ? text + '\n\n' + fileText : fileText;
+        } catch (err) {
+            errorMsg.textContent = '파일을 읽을 수 없습니다.';
+            errorMsg.style.display = 'block';
+            btnText.style.display = 'inline';
+            btnLoading.style.display = 'none';
+            submitBtn.disabled = false;
+            progressWrap.style.display = 'none';
+            return;
+        }
+    }
+
+    if (!text) {
+        errorMsg.textContent = '텍스트를 입력하거나 파일을 업로드해주세요.';
+        errorMsg.style.display = 'block';
+        btnText.style.display = 'inline';
+        btnLoading.style.display = 'none';
+        submitBtn.disabled = false;
+        progressWrap.style.display = 'none';
+        return;
+    }
+
+    setProgress(5);
+    await loadKoreanFont();
+
+    try {
+        setTimeout(() => {
+            try {
+                generateEbook(title, author, text);
+            } catch (err) {
+                errorMsg.textContent = 'PDF 생성 중 오류: ' + err.message;
+                errorMsg.style.display = 'block';
+            }
+            btnText.style.display = 'inline';
+            btnLoading.style.display = 'none';
+            submitBtn.disabled = false;
+            setTimeout(() => { progressWrap.style.display = 'none'; }, 1000);
+        }, 100);
+    } catch (err) {
+        errorMsg.textContent = 'PDF 생성 중 오류: ' + err.message;
+        errorMsg.style.display = 'block';
+        btnText.style.display = 'inline';
+        btnLoading.style.display = 'none';
+        submitBtn.disabled = false;
+        progressWrap.style.display = 'none';
+    }
+});
+</script>
+</body>
+</html>
